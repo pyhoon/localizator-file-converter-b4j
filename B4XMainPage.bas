@@ -89,15 +89,15 @@ Sub DB2XLSX
 		For i = 0 To langs.Size - 1
 			Dim lang As String = langs.Get(i)
 			If inner.ContainsKey(lang) Then
-				sheet1.PutString(XL.AddressZero( i+ 1, rowIndex), inner.Get(lang))
+				sheet1.PutString(XL.AddressZero(i + 1, rowIndex), inner.Get(lang))
 			End If
 		Next
 		rowIndex = rowIndex + 1
 	Next
 	
 	' Autosize columns
-    For i = 1 To langs.Size + 1
-		sheet1.AutoSizeColumn(i - 1)
+    For i = 0 To langs.Size
+		sheet1.AutoSizeColumn(i)
 	Next
 	
 	' Delete existing file

@@ -12,8 +12,7 @@ Version=9.85
 '#Macro: After Save, Sync Layouts, ide://run?File=%ADDITIONAL%\..\B4X\JsonLayouts.jar&Args=%PROJECT%&Args=%PROJECT_NAME%
 '#CustomBuildAction: folders ready, %WINDIR%\System32\Robocopy.exe,"..\..\Shared Files" "..\Files"
 #End Region
-'B4J project: DB to XLSX Converter
-'Requirements: jPOI library (for Excel export) + jSQL library (for SQLite)
+
 Sub Class_Globals
 	Private Root As B4XView
 	Private xui As XUI

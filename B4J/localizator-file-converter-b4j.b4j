@@ -1,30 +1,44 @@
 ﻿AppType=JavaFX
 Build1=Default,b4j.example
-File1=MainPage.bjl
-FileGroup1=New Group
+File1=icon.png
+File2=MainPage.bjl
+FileGroup1=Default Group
+FileGroup2=New Group
 Group=Default Group
 Library1=b4xpages
 Library2=jcore
 Library3=jfx
 Library4=jsql
 Library5=xlutils
+Library6=json
 Module1=|relative|..\B4XMainPage
-NumberOfFiles=1
-NumberOfLibraries=5
+NumberOfFiles=2
+NumberOfLibraries=6
 NumberOfModules=1
 Version=10.3
 @EndOfDesignText@
 #Region Project Attributes 
 	#MainFormWidth: 600
-	#MainFormHeight: 600 
+	#MainFormHeight: 300 
 #End Region
 #AdditionalJar: sqlite-jdbc-3.7.2
 
 Sub Process_Globals
-	Private fx As JFX
+	Private xui      As XUI
+	Private fx       As JFX
+	Private ui       As Boolean
+	Private OpenXLS  As Boolean
 	Private MainForm As Form
 End Sub
+
 Sub AppStart (Form1 As Form, Args() As String)
+	If Args.Length > 0 Then
+		Convert(Args(0), Args(1))
+		If Args.Length > 2 Then OpenXLS = Args(2).EqualsIgnoreCase("True")
+	Else
+		ui = True
+		OpenXLS = True
+	End If	
 	MainForm = Form1
 	MainForm.Show
 	Dim PagesManager As B4XPagesManager
@@ -53,3 +67,165 @@ Public Sub MainForm_IconifiedChanged (Iconified As Boolean)
 	B4XPages.Delegate.MainForm_IconifiedChanged(Iconified)
 End Sub
 #End Region
+
+Public Sub Convert (Input As String, Output As String)
+	If Input.EndsWith(".xlsx") And Output.EndsWith(".db") Then
+		SaveSQLite(Input, Output)
+		Return
+	End If
+	If Input.EndsWith(".db") And Output.EndsWith(".xlsx") Then
+		SaveExcel(Input, Output)
+		Return
+	End If
+End Sub
+
+Sub LogMessage (title As String, msg As String)
+	If ui Then
+		xui.MsgboxAsync(msg, title)
+	Else
+		Log(msg)
+	End If
+End Sub
+
+Public Sub SaveExcel (SQLitePath As String, ExcelPath As String)
+	If SQLitePath = "" Then
+		LogMessage("", "Input path is empty")
+		Return
+	End If
+	
+	If ExcelPath = "" Then
+		LogMessage("", "Output path is empty")
+		Return
+	End If
+	
+	' Initial SQLite
+	Dim DBFileDir As String = File.GetFileParent(SQLitePath)
+	Dim DBFileName As String = File.GetName(SQLitePath)
+	Dim sql As SQL
+	sql.InitializeSQLite(DBFileDir, DBFileName, True)
+	
+	' Load table data
+	Dim rs As ResultSet = sql.ExecQuery("SELECT key, lang, value FROM data")
+    
+	' Store in a Map of Maps: key -> (lang -> value)
+	Dim allData As Map
+	allData.Initialize
+    
+	Do While rs.NextRow
+		Dim key As String = rs.GetString("key")
+		Dim lang As String = rs.GetString("lang")
+		Dim val As String = rs.GetString("value")
+        
+		If allData.ContainsKey(key) = False Then
+			Dim inner As Map
+			inner.Initialize
+			allData.Put(key, inner)
+		End If
+		Dim innerMap As Map = allData.Get(key)
+		innerMap.Put(lang, val)
+	Loop
+	rs.Close
+    sql.Close
+	
+	' Find all unique langs
+	Dim langs As List
+	langs.Initialize
+	For Each inner As Map In allData.Values
+		For Each l As String In inner.Keys
+			If langs.IndexOf(l) = -1 Then langs.Add(l)
+		Next
+	Next
+    
+	' Create Excel workbook
+	Dim XL As XLUtils : XL.Initialize
+	Dim Workbook As XLWorkbookWriter = XL.CreateWriterBlank
+	Dim sheet1 As XLSheetWriter = Workbook.CreateSheetWriterByName("Sheet1")
+
+	' Write header
+	sheet1.PutString(XL.AddressZero(0, 0), "key")
+	For i = 0 To langs.Size - 1
+	    sheet1.PutString(XL.AddressZero(i + 1, 0), langs.Get(i))
+	Next
+
+	' Write rows
+	Dim rowIndex As Int = 1
+	For Each key As String In allData.Keys
+		sheet1.PutString(XL.AddressZero(0, rowIndex), key)
+		Dim inner As Map = allData.Get(key)
+		For i = 0 To langs.Size - 1
+			Dim lang As String = langs.Get(i)
+			If inner.ContainsKey(lang) Then
+				sheet1.PutString(XL.AddressZero(i + 1, rowIndex), inner.Get(lang))
+			End If
+		Next
+		rowIndex = rowIndex + 1
+	Next
+	
+	' Autosize columns
+    For i = 0 To langs.Size
+		sheet1.AutoSizeColumn(i)
+	Next
+	
+	' Delete existing file
+	File.Delete(ExcelPath, "")
+	
+	' Save Excel file
+	Dim FileDir As String = File.GetFileParent(ExcelPath)
+	Dim FileName As String = File.GetName(ExcelPath)
+	Dim f As String = Workbook.SaveAs(FileDir, FileName, True)
+	If OpenXLS Then
+		Wait For (XL.OpenExcel(f)) Complete (Success As Boolean)
+	End If
+	LogMessage("Success", "Excel file saved: " & f)
+End Sub
+
+Public Sub SaveSQLite (ExcelPath As String, SQLitePath As String)
+	Private sql As SQL
+	Dim ExitCode As Int = 0
+	File.Delete(SQLitePath, "")
+	
+	' Load Excel file
+	Dim FileDir As String = File.GetFileParent(ExcelPath)
+	Dim FileName As String = File.GetName(ExcelPath)
+	
+	' Initial SQLite
+	Dim DBFileDir As String = File.GetFileParent(SQLitePath)
+	Dim DBFileName As String = File.GetName(SQLitePath)
+	Dim sql As SQL
+	sql.InitializeSQLite(DBFileDir, DBFileName, True)
+	
+	sql.BeginTransaction
+	Try
+		sql.ExecNonQuery("CREATE TABLE data (key TEXT, lang TEXT, value TEXT, PRIMARY KEY (lang, key))")
+		
+		' Create Excel workbook
+		Dim XL As XLUtils : XL.Initialize
+		Dim result As XLReaderResult = XL.Reader.ReadSheetByIndex(FileDir, FileName, 0)
+		
+		Dim langs As List
+		langs.Initialize
+		For col = 0 To result.BottomRight.Col0Based
+			Dim val As String = result.Get(XL.AddressZero(col, 0))
+			If val = "key" Then Continue
+			langs.Add(val)
+		Next
+		For row0 = 1 To result.BottomRight.Row0Based
+			Dim key As String = result.Get(XL.AddressZero(0, row0))
+			For col0 = 1 To result.BottomRight.Col0Based
+				Dim lang As String = langs.Get(col0 - 1)
+				sql.ExecNonQuery2("INSERT INTO data VALUES (?, ?, ?)", Array (key.ToLowerCase, lang, result.Get(XL.AddressZero(col0, row0))))
+			Next
+		Next
+		sql.TransactionSuccessful
+		LogMessage("Success", "SQLite file saved: " & ExcelPath)
+	Catch
+		Log(LastException)
+		sql.Rollback
+		LogMessage("Error", LastException.Message)
+		ExitCode = 1
+	End Try
+	sql.Close
+	If Not(ui) Then
+		ExitApplication2(ExitCode)
+	End If
+End Sub

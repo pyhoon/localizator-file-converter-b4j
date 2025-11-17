@@ -7,16 +7,21 @@ Version=9.85
 #Region Shared Files
 #Macro: Title, Export, ide://run?File=%B4X%\Zipper.jar&Args=%PROJECT_NAME%.zip
 #Macro: Title, GitHub, ide://run?file=%WINDIR%\System32\cmd.exe&Args=/c&Args=github&Args=..\..\
-#Macro: Title, Sync Files, ide://run?file=%WINDIR%\System32\Robocopy.exe&args=..\..\Shared+Files&args=..\Files&FilesSync=True
-'#Macro: Title, JsonLayouts folder, ide://run?File=%WINDIR%\explorer.exe&Args=%PROJECT%\JsonLayouts
-'#Macro: After Save, Sync Layouts, ide://run?File=%ADDITIONAL%\..\B4X\JsonLayouts.jar&Args=%PROJECT%&Args=%PROJECT_NAME%
-'#CustomBuildAction: folders ready, %WINDIR%\System32\Robocopy.exe,"..\..\Shared Files" "..\Files"
 #End Region
 
 Sub Class_Globals
-	Private Root As B4XView
-	Private xui As XUI
-	Private sql As SQL
+	Private xui              As XUI
+	Private fx               As JFX
+	Private fc               As FileChooser
+	Private Root             As B4XView
+	Private LblMessage       As B4XView
+	Private txtExcel         As TextField
+	Private txtSQLite        As TextField
+	Private settings         As Map
+	Private BtnBrowseExcel   As Button
+	Private BtnBrowseSQLite  As Button
+	Private BtnExcelToSQLite As Button
+	Private BtnSQLiteToExcel As Button
 End Sub
 
 Public Sub Initialize
@@ -26,92 +31,52 @@ End Sub
 Private Sub B4XPage_Created (Root1 As B4XView)
 	Root = Root1
 	Root.LoadLayout("MainPage")
-	InitData
+	B4XPages.SetTitle(Me, "Localizator File Converter v2.00")
+	fc.Initialize
+	settings.Initialize
+	BtnBrowseExcel.MouseCursor = fx.Cursors.HAND
+	BtnBrowseSQLite.MouseCursor = fx.Cursors.HAND
+	BtnExcelToSQLite.MouseCursor = fx.Cursors.HAND
+	BtnSQLiteToExcel.MouseCursor = fx.Cursors.HAND
+	If File.Exists(File.DirApp, "settings.json") Then
+		Dim str As String = File.ReadString(File.DirApp, "settings.json")
+		settings = str.As(JSON).ToMap
+		txtExcel.Text = settings.Get("xlsx")
+		txtSQLite.Text = settings.Get("sqlite")
+	Else
+		txtExcel.Text = File.Combine(File.DirApp, "strings.xlsx")
+		txtSQLite.Text = File.Combine(File.DirApp, "strings.db")
+	End If
+	'InitData
 End Sub
 
-Sub InitData
-    ' Connect to database
-    sql.InitializeSQLite(File.DirApp, "strings.db", True)
+Private Sub Browse (tf As TextField, extension As String)
+	If File.Exists(File.GetFileParent(tf.Text), "") Then fc.InitialDirectory = File.GetFileParent(tf.Text)
+	fc.SetExtensionFilter(extension, Array($"*.${extension}"$))
+	Dim form As Form = B4XPages.GetNativeParent(Me)
+	Dim path As String = fc.ShowSave(form)
+	If path <> "" Then tf.Text = path
+	If extension = "xlsx" Then
+		settings.Put("xlsx", path)
+	End If
+	If extension = "db" Then
+		settings.Put("sqlite", path)
+	End If
+	File.WriteString(File.DirApp, "settings.json", settings.As(JSON).ToString)
 End Sub
 
-Sub DB2XLSX
-	' Path to output Excel file
-	Dim outPath As String = File.Combine(File.DirApp, "strings.xlsx")
-	
-	' Load table data
-	Dim rs As ResultSet = sql.ExecQuery("SELECT key, lang, value FROM data")
-    
-	' Store in a Map of Maps: key -> (lang -> value)
-	Dim allData As Map
-	allData.Initialize
-    
-	Do While rs.NextRow
-		Dim k As String = rs.GetString("key")
-		Dim lang As String = rs.GetString("lang")
-		Dim val As String = rs.GetString("value")
-        
-		If allData.ContainsKey(k) = False Then
-			Dim inner As Map
-			inner.Initialize
-			allData.Put(k, inner)
-		End If
-		Dim innerMap As Map = allData.Get(k)
-		innerMap.Put(lang, val)
-	Loop
-	rs.Close
-    
-	' Find all unique langs
-	Dim langs As List
-	langs.Initialize
-	For Each inner As Map In allData.Values
-		For Each l As String In inner.Keys
-			If langs.IndexOf(l) = -1 Then langs.Add(l)
-		Next
-	Next
-    
-	' Create Excel workbook
-	Dim XL As XLUtils : XL.Initialize
-	Dim Workbook As XLWorkbookWriter = XL.CreateWriterBlank
-	Dim sheet1 As XLSheetWriter = Workbook.CreateSheetWriterByName("Sheet1")
-
-	' Write header
-	sheet1.PutString(XL.AddressZero(0, 0), "key")
-	For i = 0 To langs.Size - 1
-	    sheet1.PutString(XL.AddressZero(i + 1, 0), langs.Get(i))
-	Next
-
-	' Write rows
-	Dim rowIndex As Int = 1
-	For Each key As String In allData.Keys
-		sheet1.PutString(XL.AddressZero(0, rowIndex), key)
-		Dim inner As Map = allData.Get(key)
-		For i = 0 To langs.Size - 1
-			Dim lang As String = langs.Get(i)
-			If inner.ContainsKey(lang) Then
-				sheet1.PutString(XL.AddressZero(i + 1, rowIndex), inner.Get(lang))
-			End If
-		Next
-		rowIndex = rowIndex + 1
-	Next
-	
-	' Autosize columns
-    For i = 0 To langs.Size
-		sheet1.AutoSizeColumn(i)
-	Next
-	
-	' Delete existing file
-	File.Delete(File.DirApp, "strings.xlsx")
-	
-	' Save Excel file
-	Dim f As String = Workbook.SaveAs(File.DirApp, "strings.xlsx", True)
-	Wait For (XL.OpenExcel(f)) Complete (Success As Boolean)
-
-	Log("Excel file saved: " & outPath)
-	xui.MsgboxAsync("Conversion Completed!" & CRLF & outPath, "Done")
-	
-	sql.Close
+Private Sub BtnBrowseExcel_Click
+	Browse(txtExcel, "xlsx")
 End Sub
 
-Private Sub BtnDB2XLSX_Click
-	DB2XLSX
+Private Sub BtnBrowseSQLite_Click
+	Browse(txtSQLite, "db")
+End Sub
+
+Private Sub BtnExcelToSQLite_Click
+	Main.SaveSqlite(txtExcel.Text, txtSQLite.Text)
+End Sub
+
+Private Sub BtnSQLiteToExcel_Click
+	Main.SaveExcel(txtSQLite.Text, txtExcel.Text)
 End Sub

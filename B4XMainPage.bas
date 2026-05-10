@@ -5,6 +5,7 @@ Type=Class
 Version=9.85
 @EndOfDesignText@
 #Region Shared Files
+#Macro: Title, Convert, ide://run?File=result.jar&Args=strings.xlsx&Args=strings.db
 #Macro: Title, Export, ide://run?File=%B4X%\Zipper.jar&Args=%PROJECT_NAME%.zip
 #Macro: Title, GitHub, ide://run?file=%WINDIR%\System32\cmd.exe&Args=/c&Args=github&Args=..\..\
 #End Region
@@ -31,7 +32,7 @@ End Sub
 Private Sub B4XPage_Created (Root1 As B4XView)
 	Root = Root1
 	Root.LoadLayout("MainPage")
-	B4XPages.SetTitle(Me, "Localizator File Converter v2.00")
+	B4XPages.SetTitle(Me, "Localizator File Converter v2.01")
 	fc.Initialize
 	settings.Initialize
 	BtnBrowseExcel.MouseCursor = fx.Cursors.HAND

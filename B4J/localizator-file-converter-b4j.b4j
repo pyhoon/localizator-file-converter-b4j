@@ -15,7 +15,7 @@ Module1=|relative|..\B4XMainPage
 NumberOfFiles=2
 NumberOfLibraries=6
 NumberOfModules=1
-Version=10.3
+Version=10.5
 @EndOfDesignText@
 #Region Project Attributes 
 	#MainFormWidth: 600
@@ -217,7 +217,7 @@ Public Sub SaveSQLite (ExcelPath As String, SQLitePath As String)
 			Next
 		Next
 		sql.TransactionSuccessful
-		LogMessage("Success", "SQLite file saved: " & ExcelPath)
+		LogMessage("Success", "SQLite file saved: " & SQLitePath)
 	Catch
 		Log(LastException)
 		sql.Rollback
